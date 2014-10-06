@@ -4,9 +4,10 @@ JS_MOD.Anim = (function () {
   var width = 100;
   var height = 100;
 
-  JS_MOD.scale = 4;
-  JS_MOD.width = width * JS_MOD.scale;
-  JS_MOD.height = JS_MOD.width;
+  var scale = 4;
+  var scaledWidth = width * scale;
+  var scaledHeight = height * scale;
+
   var frame = 1;
 
   // Canvas Variables
@@ -19,13 +20,13 @@ JS_MOD.Anim = (function () {
   var interval = 1000/fps;
 
   function init(canvas) {
-    canvas.attr('width', JS_MOD.width);
-    canvas.attr('height', JS_MOD.height);
+    canvas.attr('width', scaledWidth);
+    canvas.attr('height', scaledHeight);
     canvas.attr('image-rendering', "crisp-edges");
 
     // Extract the image data from the canvas
     ctx = canvas[0].getContext('2d');
-    image = ctx.createImageData(width * JS_MOD.scale, height * JS_MOD.scale);
+    image = ctx.createImageData(width * scale, height * scale);
 
     run();
   }
@@ -46,12 +47,13 @@ JS_MOD.Anim = (function () {
 
     if (delta > interval) {
       then = now - (delta % interval);
-      drawFrame();
+      drawFrame(image);
+      ctx.putImageData(image, 0, 0);
       frame++;
     }
   }
 
-  function drawFrame() {
+  function drawFrame(image) {
     var exposedFunctions = {
       sin: Math.sin,
       cos: Math.cos,
@@ -78,18 +80,16 @@ JS_MOD.Anim = (function () {
         // Get the color
         var intColor = fun(exposedFunctions, exposedVars);
 
-        for (var sy = 0; sy < JS_MOD.scale; sy++) {
-          for (var sx = 0; sx < JS_MOD.scale; sx++) {
-            image.data[(( ((y* JS_MOD.scale)+sy) *JS_MOD.width) +((x* JS_MOD.scale)+sx) )*4 + 0] = toR(intColor); // R
-            image.data[(( ((y* JS_MOD.scale)+sy) *JS_MOD.width) +((x* JS_MOD.scale)+sx) )*4 + 1] = toG(intColor); // G
-            image.data[(( ((y* JS_MOD.scale)+sy) *JS_MOD.width) +((x* JS_MOD.scale)+sx) )*4 + 2] = toB(intColor); // B
-            image.data[(( ((y* JS_MOD.scale)+sy) *JS_MOD.width) +((x* JS_MOD.scale)+sx) )*4 + 3] = 255;           // A
+        for (var sy = 0; sy < scale; sy++) {
+          for (var sx = 0; sx < scale; sx++) {
+            image.data[(( ((y* scale)+sy) *scaledWidth) +((x* scale)+sx) )*4 + 0] = toR(intColor); // R
+            image.data[(( ((y* scale)+sy) *scaledWidth) +((x* scale)+sx) )*4 + 1] = toG(intColor); // G
+            image.data[(( ((y* scale)+sy) *scaledWidth) +((x* scale)+sx) )*4 + 2] = toB(intColor); // B
+            image.data[(( ((y* scale)+sy) *scaledWidth) +((x* scale)+sx) )*4 + 3] = 255;           // A
           }
         }
       }
     }
-
-    ctx.putImageData(image, 0, 0);
   }
 
   function toB(num) {
@@ -110,9 +110,48 @@ JS_MOD.Anim = (function () {
     return r;
   }
 
+  function exportGif(canvas) {
+    var encoder = new GIFEncoder();
+    encoder.setRepeat(0);           // Loop forever
+    encoder.setDelay(interval);     // One frame every interval
+
+    // Reset the animation
+    var oldFrame = frame;
+    var oldScale = scale;
+    frame = 10; // Start at frame 10 such that we're not just showing the very beginning
+    scale = 1;  // Scale at 1:1
+    scaledWidth = width * scale;
+    scaledHeight = height * scale;
+
+    // Encode each of the frames
+    encoder.start();
+    encoder.setSize(width, height);
+    var imageData = { data: [] };
+    while (frame < 30) {
+      console.log('frame...');
+      drawFrame(imageData);
+      console.log('drawn');
+      encoder.addFrame(imageData.data, true);
+      console.log('encoded');
+      frame++;
+    }
+    encoder.finish();
+
+    // Restore the previous state
+    frame = oldFrame;
+    scale = oldScale;
+    scaledWidth = width * scale;
+    scaledHeight = height * scale;
+
+    // Base-64 encode the data stream
+    var stream = encoder.stream();
+    return btoa(stream.getData());
+  }
+
   return {
     init: init,
-    updateEquation: updateEquation
+    updateEquation: updateEquation,
+    exportGif: exportGif
   };
 })();
 
@@ -163,8 +202,13 @@ window.requestAnimFrame = (function(callback) {
   };
 })();
 
-
 $(document).ready(function () {
   JS_MOD.Anim.init($('#display'));
   JS_MOD.EquationManager.init($('#equation-form'), JS_MOD.Anim);
+});
+
+$('#export').on('click', function(e) {
+  e.preventDefault();
+  var gif = JS_MOD.Anim.exportGif();
+  document.location = 'data:image/gif;base64,' + gif;
 });
